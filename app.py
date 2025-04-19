@@ -6,13 +6,19 @@ from streamlit_folium import st_folium
 import pandas as pd
 import os
 from datetime import datetime
+from geopy.geocoders import Nominatim
 
+# Constants
 PROJECT_LOCATIONS = {
     "project_id_123": (26.8467, 80.9462),
     "project_id_456": (28.6139, 77.2090),
     "project_id_789": (23.367311, 85.325555),
 }
 
+# Initialize Geolocator
+geolocator = Nominatim(user_agent="geo_checker")
+
+# Helper Functions
 def get_exif_location(img):
     try:
         exif_data = img._getexif()
@@ -51,6 +57,14 @@ def log_data(data, log_file="upload_logs.csv"):
     else:
         df.to_csv(log_file, index=False)
 
+def get_risk_level(distance, ai_pass):
+    if not ai_pass or distance > 1.5:
+        return "High", "🔴"
+    elif distance > 1.0:
+        return "Medium", "🟠"
+    return "Low", "🟢"
+
+# Streamlit App
 st.set_page_config(page_title="Geo-tag AI", layout="centered")
 st.title("Jan Darpan Geo-tag AI")
 
@@ -82,6 +96,14 @@ if uploaded_file:
         ai_pass = fake_ai_check(uploaded_file.name)
         st.write(f"**Image Filename Check:** {'✅ Looks relevant' if ai_pass else '⚠️ Unclear if construction-related'}")
 
+        # Risk level feedback
+        risk, emoji = get_risk_level(distance_km, ai_pass)
+        st.write(f"**Corruption Risk Meter:** {emoji} {risk}")
+
+        # Reverse Geocoding
+        location_name = geolocator.reverse(coords_to_check, language='en')
+        st.write(f"📍 Location Name: {location_name.address if location_name else 'Not found'}")
+
         # Show map
         m = folium.Map(location=project_coords, zoom_start=14)
         folium.Marker(project_coords, tooltip="Project Site", icon=folium.Icon(color="green")).add_to(m)
@@ -97,6 +119,7 @@ if uploaded_file:
             "distance_km": round(distance_km, 3),
             "location_valid": is_within,
             "image_valid": ai_pass,
+            "risk_level": risk,
             "status": "Flagged" if not is_within or not ai_pass else "Valid"
         })
 
